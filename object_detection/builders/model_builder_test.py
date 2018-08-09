@@ -29,7 +29,8 @@ from object_detection.models import faster_rcnn_pnas_feature_extractor as frcnn_
 from object_detection.models import faster_rcnn_resnet_v1_feature_extractor as frcnn_resnet_v1
 from object_detection.models import ssd_resnet_v1_fpn_feature_extractor as ssd_resnet_v1_fpn
 from object_detection.models import ssd_resnet_v1_ppn_feature_extractor as ssd_resnet_v1_ppn
-from object_detection.models import faster_rcnn_vgg_16_fixed_feature_extractor as frcnn_vgg16
+# from object_detection.models import faster_rcnn_vgg_16_fixed_feature_extractor as frcnn_vgg16
+from object_detection.models import faster_rcnn_vgg16_feature_extractor as frcnn_vgg16
 from object_detection.models.embedded_ssd_mobilenet_v1_feature_extractor import EmbeddedSSDMobileNetV1FeatureExtractor
 from object_detection.models.ssd_inception_v2_feature_extractor import SSDInceptionV2FeatureExtractor
 from object_detection.models.ssd_inception_v3_feature_extractor import SSDInceptionV3FeatureExtractor
@@ -1259,7 +1260,7 @@ class ModelBuilderTest(tf.test.TestCase):
         first_stage_anchor_generator {
           grid_anchor_generator {
             scales: [0.25, 0.5, 1.0, 2.0]
-            aspect_ratios: [0.5, 1.0, 2.0]
+            aspect_ratios: [1.0]
             height_stride: 16
             width_stride: 16
           }
@@ -1326,7 +1327,7 @@ class ModelBuilderTest(tf.test.TestCase):
         first_stage_anchor_generator {
           grid_anchor_generator {
             scales: [0.25, 0.5, 1.0, 2.0]
-            aspect_ratios: [0.5, 1.0, 2.0]
+            aspect_ratios: [1.0]
             height_stride: 16
             width_stride: 16
           }

@@ -20,6 +20,13 @@ Example usage:
         --data_dir=/home/user/VOCdevkit \
         --year=VOC2012 \
         --output_path=/home/user/pascal.record
+
+python dataset_tools/create_pascal_tf_record.py \
+        --data_dir=/home/lz/Lab/TensorFlow/dataset/origin \
+        --set=train \
+        --label_map_path='/home/lz/Lab/TensorFlow/research/object_detection/data/tomato_label_map.pbtxt' \
+        --output_path=/home/lz/Lab/TensorFlow/dataset/train_1560x2080.record
+
 """
 from __future__ import absolute_import
 from __future__ import division
@@ -42,9 +49,9 @@ flags = tf.app.flags
 flags.DEFINE_string('data_dir', '', 'Root directory to raw PASCAL VOC dataset.')
 flags.DEFINE_string('set', 'train', 'Convert training set, validation set or '
                     'merged set.')
-flags.DEFINE_string('annotations_dir', 'Annotations',
+flags.DEFINE_string('annotations_dir', 'annotations',
                     '(Relative) path to annotations directory.')
-flags.DEFINE_string('year', 'VOC2007', 'Desired challenge year.')
+# flags.DEFINE_string('year', 'VOC2007', 'Desired challenge year.')
 flags.DEFINE_string('output_path', '', 'Path to output TFRecord')
 flags.DEFINE_string('label_map_path', 'data/pascal_label_map.pbtxt',
                     'Path to label map proto')
@@ -52,15 +59,16 @@ flags.DEFINE_boolean('ignore_difficult_instances', False, 'Whether to ignore '
                      'difficult instances')
 FLAGS = flags.FLAGS
 
-SETS = ['train', 'val', 'trainval', 'test']
-YEARS = ['VOC2007', 'VOC2012', 'merged']
+# SETS = ['train', 'val', 'trainval', 'test']
+SETS = ['train', 'val', 'test']
+# YEARS = ['VOC2007', 'VOC2012', 'merged']
 
 
 def dict_to_tf_example(data,
                        dataset_directory,
                        label_map_dict,
                        ignore_difficult_instances=False,
-                       image_subdirectory='JPEGImages'):
+                       image_subdirectory='images'):
   """Convert XML derived dict to tf.Example proto.
 
   Notice that this function normalizes the bounding box coordinates provided
@@ -85,10 +93,10 @@ def dict_to_tf_example(data,
   # print(data['folder'])
   # print(image_subdirectory)
   # img_path = os.path.join(data['folder'], image_subdirectory, data['filename'])
-  img_path = os.path.join(FLAGS.year, image_subdirectory, data['filename'])
+  img_path = os.path.join(image_subdirectory, data['filename'])
   full_path = os.path.join(dataset_directory, img_path)
-  # print('----------full_path------')
-  # print(full_path)
+  print('----------full_path------')
+  print(full_path)
   with tf.gfile.GFile(full_path, 'rb') as fid:
     encoded_jpg = fid.read()
   encoded_jpg_io = io.BytesIO(encoded_jpg)
@@ -152,31 +160,30 @@ def dict_to_tf_example(data,
 def main(_):
   if FLAGS.set not in SETS:
     raise ValueError('set must be in : {}'.format(SETS))
-  if FLAGS.year not in YEARS:
-    raise ValueError('year must be in : {}'.format(YEARS))
+  # if FLAGS.year not in YEARS:
+  #   raise ValueError('year must be in : {}'.format(YEARS))
 
   data_dir = FLAGS.data_dir
-  years = ['VOC2007', 'VOC2012']
-  if FLAGS.year != 'merged':
-    years = [FLAGS.year]
+  # years = ['VOC2007', 'VOC2012']
+  # if FLAGS.year != 'merged':
+  #   years = [FLAGS.year]
 
   writer = tf.python_io.TFRecordWriter(FLAGS.output_path)
 
   label_map_dict = label_map_util.get_label_map_dict(FLAGS.label_map_path)
 
-  for year in years:
-    logging.info('Reading from PASCAL %s dataset.', year)
+  # for year in years:
+  #   logging.info('Reading from PASCAL %s dataset.', year)
     # examples_path = os.path.join(data_dir, year, 'ImageSets', 'Main',
     #                              'aeroplane_' + FLAGS.set + '.txt')
-    examples_path = os.path.join(data_dir, year, 'ImageSets', 'Main',
-                                 FLAGS.set + '.txt')
-    # print('---------------examples_path---------')
-    # print(examples_path)
-    annotations_dir = os.path.join(data_dir, year, FLAGS.annotations_dir)
-    # print('---------------annotations_dir---------')
-    # print(annotations_dir)
-    examples_list = dataset_util.read_examples_list(examples_path)
-    for idx, example in enumerate(examples_list):
+  examples_path = os.path.join(data_dir, FLAGS.set + '.txt')
+  print('---------------examples_path---------')
+  print(examples_path)
+  annotations_dir = os.path.join(data_dir, FLAGS.annotations_dir)
+  print('---------------annotations_dir---------')
+  print(annotations_dir)
+  examples_list = dataset_util.read_examples_list(examples_path)
+  for idx, example in enumerate(examples_list):
       # print(example)
       if idx % 100 == 0:
         logging.info('On image %d of %d', idx, len(examples_list))

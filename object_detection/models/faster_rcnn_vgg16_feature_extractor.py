@@ -29,17 +29,15 @@ import tensorflow as tf
 from object_detection.meta_architectures import faster_rcnn_meta_arch
 from nets import vgg
 # from nets import resnet_v1
-
+Dense = tf.keras.layers.Dense
 slim = tf.contrib.slim
 
 
-class FasterRCNNVGGFeatureExtractor(
+class FasterRCNNVGG16FeatureExtractor(
     faster_rcnn_meta_arch.FasterRCNNFeatureExtractor):
   """Faster R-CNN VGG feature extractor implementation."""
 
   def __init__(self,
-               architecture,
-               vgg_model,
                is_training,
                first_stage_features_stride,
                batch_norm_trainable=False,
@@ -59,11 +57,13 @@ class FasterRCNNVGGFeatureExtractor(
     Raises:
       ValueError: If `first_stage_features_stride` is not 8 or 16.
     """
-    if first_stage_features_stride != 8 and first_stage_features_stride != 16:
-      raise ValueError('`first_stage_features_stride` must be 8 or 16.')
-    self._architecture = architecture
-    self._vgg_model = vgg_model
-    super(FasterRCNNVGGFeatureExtractor, self).__init__(
+    # if first_stage_features_stride != 8 and first_stage_features_stride != 16:
+    #   raise ValueError('`first_stage_features_stride` must be 8 or 16.')
+    # self._architecture = architecture
+    # print('--------------architecture--------------')
+    # print(architecture)
+    self._vgg_model = vgg.vgg_16
+    super(FasterRCNNVGG16FeatureExtractor, self).__init__(
         is_training, first_stage_features_stride, batch_norm_trainable,
         reuse_weights, weight_decay)
 
@@ -116,22 +116,48 @@ class FasterRCNNVGGFeatureExtractor(
       # Disables batchnorm for fine-tuning with smaller batch sizes.
       # TODO(chensun): Figure out if it is needed when image
       # batch size is bigger.
-      with slim.arg_scope(
-          vgg.vgg_arg_scope(
-              weight_decay=self._weight_decay)):
-        with tf.variable_scope(
-            self._architecture, reuse=self._reuse_weights) as var_scope:
-          _, activations = self._vgg_model(
-              preprocessed_inputs,
-              num_classes=None,
-              is_training=self._train_batch_norm,
-              global_pool=False,
-              output_stride=self._first_stage_features_stride,
-              spatial_squeeze=False,
-              scope=var_scope)
+      def vgg_arg_scope(weight_decay=0.0005):
+          """Defines the VGG arg scope.
 
-    handle = scope + '/%s/pool5' % self._architecture
-    return activations[handle], activations
+          Args:
+            weight_decay: The l2 regularization coefficient.
+
+          Returns:
+            An arg_scope.
+          """
+          with slim.arg_scope([slim.conv2d, slim.fully_connected],
+                              activation_fn=tf.nn.relu,
+                              weights_regularizer=slim.l2_regularizer(weight_decay),
+                              biases_initializer=tf.zeros_initializer()):
+              with slim.arg_scope([slim.conv2d], padding='SAME') as arg_sc:
+                  return arg_sc
+
+      with tf.variable_scope(scope, 'vgg_16') as sc:
+          end_points_collection = sc.original_name_scope + '_end_points'
+          # Collect outputs for conv2d, fully_connected and max_pool2d.
+          with slim.arg_scope([slim.conv2d, slim.fully_connected, slim.max_pool2d],
+                              outputs_collections=end_points_collection):
+              net = slim.repeat(preprocessed_inputs, 2, slim.conv2d, 64, [3, 3], scope='conv1')
+              net = slim.max_pool2d(net, [2, 2], scope='pool1')
+              net = slim.repeat(net, 2, slim.conv2d, 128, [3, 3], scope='conv2')
+              net = slim.max_pool2d(net, [2, 2], scope='pool2')
+              net = slim.repeat(net, 3, slim.conv2d, 256, [3, 3], scope='conv3')
+              net = slim.max_pool2d(net, [2, 2], scope='pool3')
+              net = slim.repeat(net, 3, slim.conv2d, 512, [3, 3], scope='conv4')
+              net = slim.max_pool2d(net, [2, 2], scope='pool4')
+              net = slim.repeat(net, 3, slim.conv2d, 512, [3, 3], scope='conv5')
+
+      # with tf.variable_scope(name_or_scope='vgg_16', reuse=self._reuse_weights) as var_scope:
+        #   _, activations = self._vgg_model(
+        #       preprocessed_inputs,
+        #       num_classes=None,
+        #       is_training=self._train_batch_norm,
+        #       global_pool=False,
+        #       spatial_squeeze=False,
+        #       scope=var_scope)
+
+    # handle = scope + '/%s/pool5' % self._architecture
+    return net
 
   def _extract_box_classifier_features(self, proposal_feature_maps, scope):
     """Extracts second stage box classifier features.
@@ -147,103 +173,10 @@ class FasterRCNNVGGFeatureExtractor(
         [batch_size * self.max_num_proposals, height, width, depth]
         representing box classifier features for each proposal.
     """
-    with tf.variable_scope(self._architecture, reuse=self._reuse_weights):
-      with slim.arg_scope(
-          vgg.vgg_arg_scope(
-              weight_decay=self._weight_decay)):
-        with slim.arg_scope([slim.batch_norm],
-                            is_training=self._train_batch_norm):
-          blocks = [
-              resnet_utils.Block('block4', resnet_v1.bottleneck, [{
-                  'depth': 2048,
-                  'depth_bottleneck': 512,
-                  'stride': 1
-              }] * 3)
-          ]
-          proposal_classifier_features = resnet_utils.stack_blocks_dense(
-              proposal_feature_maps, blocks)
+    x = Dense(4096, activation='relu', name='fc1')(proposal_feature_maps)
+    x = slim.dropout(x, 0.5, scope="Dropout_1", is_training=self._is_training)
+    x = Dense(4096, activation='relu', name='fc2')(x)
+    proposal_classifier_features = slim.dropout(x, 0.5, scope='Dropout_2', is_training=self._is_training)
+
     return proposal_classifier_features
 
-
-class FasterRCNNVGG16FeatureExtractor(FasterRCNNVGGFeatureExtractor):
-  """Faster R-CNN VGG16 feature extractor implementation."""
-
-  def __init__(self,
-               is_training,
-               first_stage_features_stride,
-               batch_norm_trainable=False,
-               reuse_weights=None,
-               weight_decay=0.0):
-    """Constructor.
-
-    Args:
-      is_training: See base class.
-      first_stage_features_stride: See base class.
-      batch_norm_trainable: See base class.
-      reuse_weights: See base class.
-      weight_decay: See base class.
-
-    Raises:
-      ValueError: If `first_stage_features_stride` is not 8 or 16,
-        or if `architecture` is not supported.
-    """
-    super(FasterRCNNVGG16FeatureExtractor, self).__init__(
-        'resnet_v1_50', vgg.vgg_16, is_training,
-        first_stage_features_stride, batch_norm_trainable,
-        reuse_weights, weight_decay)
-
-
-class FasterRCNNVGG11FeatureExtractor(FasterRCNNVGGFeatureExtractor):
-  """Faster R-CNN Resnet 101 feature extractor implementation."""
-
-  def __init__(self,
-               is_training,
-               first_stage_features_stride,
-               batch_norm_trainable=False,
-               reuse_weights=None,
-               weight_decay=0.0):
-    """Constructor.
-
-    Args:
-      is_training: See base class.
-      first_stage_features_stride: See base class.
-      batch_norm_trainable: See base class.
-      reuse_weights: See base class.
-      weight_decay: See base class.
-
-    Raises:
-      ValueError: If `first_stage_features_stride` is not 8 or 16,
-        or if `architecture` is not supported.
-    """
-    super(FasterRCNNVGG11FeatureExtractor, self).__init__(
-        'resnet_v1_101', vgg.vgg_a, is_training,
-        first_stage_features_stride, batch_norm_trainable,
-        reuse_weights, weight_decay)
-
-
-class FasterRCNNVGG19FeatureExtractor(FasterRCNNVGGFeatureExtractor):
-  """Faster R-CNN Resnet 152 feature extractor implementation."""
-
-  def __init__(self,
-               is_training,
-               first_stage_features_stride,
-               batch_norm_trainable=False,
-               reuse_weights=None,
-               weight_decay=0.0):
-    """Constructor.
-
-    Args:
-      is_training: See base class.
-      first_stage_features_stride: See base class.
-      batch_norm_trainable: See base class.
-      reuse_weights: See base class.
-      weight_decay: See base class.
-
-    Raises:
-      ValueError: If `first_stage_features_stride` is not 8 or 16,
-        or if `architecture` is not supported.
-    """
-    super(FasterRCNNVGG19FeatureExtractor, self).__init__(
-        'resnet_v1_152', vgg.vgg_19, is_training,
-        first_stage_features_stride, batch_norm_trainable,
-        reuse_weights, weight_decay)
